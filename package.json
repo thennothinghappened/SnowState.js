@@ -1,0 +1,37 @@
+{
+  "name": "@sohomsahaun/snowstate",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "lint": "eslint src",
+    "build": "npm run lint && tsc"
+  },
+  "contributors": [
+    {
+      "name": "sohomsahaun"
+    },
+    {
+      "name": "meseta"
+    }
+  ],
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "@eslint/js": "^9.23.0",
+    "@types/node": "^20.17.30",
+    "eslint": "^9.23.0",
+    "typescript": "5.8.2",
+    "typescript-eslint": "^8.29.0"
+  },
+  "prettier": {
+    "printWidth": 120
+  },
+  "files": [
+    "dist/*"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sohomsahaun/SnowState.js"
+  }
+}
