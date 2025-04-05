@@ -1,0 +1,49 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+' # Matches tags like 1.0.1
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org/
+
+      - name: Get the version from package.json
+        id: pkg
+        run: |
+          echo "version=$(jq -r .version package.json)" >> $GITHUB_OUTPUT
+
+      - name: Get the tag version
+        id: tag
+        run: |
+          echo "tag_version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Check version match
+        run: |
+          echo "package.json version: ${{ steps.pkg.outputs.version }}"
+          echo "Git tag version: ${{ steps.tag.outputs.tag_version }}"
+          if [ "${{ steps.pkg.outputs.version }}" != "${{ steps.tag.outputs.tag_version }}" ]; then
+            echo "❌ Version mismatch between tag and package.json"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
