@@ -185,6 +185,85 @@ if (fsm.getPreviousState() === "idle") {
 }
 ```
 
+#### `.getTime()`
+
+Returns the number of milliseconds the current state has been running for.
+
+**Returns:** number
+
+**Example:**
+```typescript
+const time = fsm.getTime();
+```
+
+#### `.setTime(milliseconds)`
+
+Sets the number of milliseconds the current state has been running for.
+
+| Argument | Type | Description |
+| --- | --- | --- |
+| milliseconds | number | Duration the current state has been running for |
+
+**Returns:** SnowState instance
+
+**Example:**
+```typescript
+fsm.setTime(0);
+```
+This resets the current state duration.
+
+
+#### `.on(event, callback)`
+
+Executes a callback when a certain event occurs. (Listed below)
+
+| Argument | Type | Description |
+| --- | --- | --- |
+| event | string | Event that is being emitted |
+| callback | function | Callback to execute when the event occurs |
+
+**Returns:** SnowState instance
+
+**Example:**
+```typescript
+fsm.on("state changed", (destState: string, sourceState: string) => {
+  console.log("State has changed from " + sourceState + " to " + destState);
+});
+```
+
+Built-in events:
+<table>
+<thead>
+  <tr>
+    <th rowspan="2">Event</th>
+    <th colspan="3">Callback Arguments</th>
+  </tr>
+  <tr>
+    <th>Argument</th>
+    <th>Type</th>
+    <th>Description</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td rowspan="3">state changed</td>
+    <td>dest_state</td>
+    <td>String</td>
+    <td>State it has switched to</td>
+  </tr>
+  <tr>
+    <td>source_state</td>
+    <td>String</td>
+    <td>State it has switched from</td>
+  </tr>
+  <tr>
+    <td>transition_name</td>
+    <td>String</td>
+    <td>The transition which was triggered for the state change (<code>undefined</code> if not applicable)</td>
+  </tr>
+</tbody>
+</table>
+
 ### Events
 
 #### `.eventSetDefaultMethod(eventName, method)`

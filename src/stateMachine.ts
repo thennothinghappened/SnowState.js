@@ -1,5 +1,11 @@
 import { SnowStateError } from "./errors";
 
+// Define event map for type safety
+export interface SnowStateEvents {
+  stateChanged: (destState: string, sourceState: string, transitionName?: string) => void;
+  // Add other typed events here as needed
+}
+
 export enum SNOWSTATE_DEFINEDNESS {
   NOT_DEFINED = 0,
   DEFINED = 1,
@@ -9,7 +15,7 @@ export enum SNOWSTATE_DEFINEDNESS {
 export const SONWSTATE_WILDCARD_TRANSITION_NAME = "*";
 export const SNOWSTATE_REFLEXIVE_TRANSITION_NAME = "=";
 
-type StateMethod = () => void;
+type StateMethod = (...args: any[]) => any;
 type LeaveEnterMethod = (data?: any) => void;
 
 interface StateObjectBuiltin {
@@ -67,6 +73,8 @@ export interface SnowState<
   ): SnowStateWithTypes<StateNames, CustomEvents, TransitionNames | NewTransitionName>;
   trigger(transitionName: TransitionNames, data?: any): this;
   transitionExists(transitionName: TransitionNames, sourceState: StateNames): SNOWSTATE_DEFINEDNESS;
+  on<K extends keyof SnowStateEvents>(event: K, callback: SnowStateEvents[K]): this;
+  off<K extends keyof SnowStateEvents>(event: K, callback?: SnowStateEvents[K]): this;
 }
 
 export class SnowState<
@@ -88,6 +96,7 @@ export class SnowState<
   protected addedEvents = new Set<string>(["enter", "leave"]);
   protected stateTransitions = new Map<StateNames, Map<TransitionNames, TransitionRecord<StateNames>[]>>();
   protected wildcardTransitions = new Map<TransitionNames, TransitionRecord<StateNames>[]>();
+  protected eventCallbacks: Record<string, Set<StateMethod>> = {};
 
   constructor(initialState: string) {
     this.state = initialState as unknown as StateNames;
@@ -112,14 +121,14 @@ export class SnowState<
     }
 
     this.addedEvents.add(eventName);
-    (this as any)[eventName] = () => {
+    (this as any)[eventName] = (...args: any[]) => {
       const currentState = this.stateObjects[this.state];
       const stateMethod = currentState[eventName as keyof typeof currentState];
 
       if (typeof stateMethod === "function") {
-        stateMethod();
+        return stateMethod(...args);
       } else if (this.defaultEventMethods[eventName]) {
-        this.defaultEventMethods[eventName]();
+        return this.defaultEventMethods[eventName](...args);
       }
     };
   }
@@ -157,6 +166,16 @@ export class SnowState<
 
   // *** State runtime ***
   public change(stateName: StateNames, leaveFunc?: LeaveEnterMethod, enterFunc?: LeaveEnterMethod, data?: any): this {
+    return this.changeWithTransitionName(stateName, leaveFunc, enterFunc, data);
+  }
+
+  protected changeWithTransitionName(
+    stateName: StateNames,
+    leaveFunc?: LeaveEnterMethod,
+    enterFunc?: LeaveEnterMethod,
+    data?: any,
+    transitionName?: string
+  ): this {
     if (!(stateName in this.stateObjects)) {
       throw new SnowStateError(`State '${stateName}' does not exist`);
     }
@@ -182,6 +201,7 @@ export class SnowState<
       }
     }
 
+    const sourceState = this.state;
     // Change the state and reset start time
     this.state = stateName;
     this.stateStartTime = Date.now();
@@ -193,6 +213,9 @@ export class SnowState<
     } else {
       newStateObject.enter?.();
     }
+
+    // Emit state_changed event
+    this.emit("stateChanged", stateName, sourceState, transitionName);
 
     return this;
   }
@@ -377,8 +400,15 @@ export class SnowState<
       if (transitions && transitions.length > 0) {
         for (const transition of transitions) {
           if (!transition.condition || transition.condition()) {
-            const destState = transition.destState == SNOWSTATE_REFLEXIVE_TRANSITION_NAME ? this.state : transition.destState;
-            return this.change(destState, transition.leaveFunc, transition.enterFunc, data);
+            const destState =
+              transition.destState == SNOWSTATE_REFLEXIVE_TRANSITION_NAME ? this.state : transition.destState;
+            return this.changeWithTransitionName(
+              destState,
+              transition.leaveFunc,
+              transition.enterFunc,
+              data,
+              transitionName
+            );
           }
         }
       }
@@ -389,8 +419,15 @@ export class SnowState<
     if (wildcardTransitions) {
       for (const transition of wildcardTransitions) {
         if (!transition.condition || transition.condition()) {
-          const destState = transition.destState == SNOWSTATE_REFLEXIVE_TRANSITION_NAME ? this.state : transition.destState;
-          return this.change(destState, transition.leaveFunc, transition.enterFunc, data);
+          const destState =
+            transition.destState == SNOWSTATE_REFLEXIVE_TRANSITION_NAME ? this.state : transition.destState;
+          return this.changeWithTransitionName(
+            destState,
+            transition.leaveFunc,
+            transition.enterFunc,
+            data,
+            transitionName
+          );
         }
       }
     }
@@ -405,7 +442,14 @@ export class SnowState<
     leaveFunc?: LeaveEnterMethod,
     enterFunc?: LeaveEnterMethod
   ): SnowStateWithTypes<StateNames, CustomEvents, TransitionNames | NewTransitionName> {
-    return this.addTransition(transitionName, SONWSTATE_WILDCARD_TRANSITION_NAME, destState, condition, leaveFunc, enterFunc);
+    return this.addTransition(
+      transitionName,
+      SONWSTATE_WILDCARD_TRANSITION_NAME,
+      destState,
+      condition,
+      leaveFunc,
+      enterFunc
+    );
   }
 
   public addReflexiveTransition<SourceState extends StateNames, NewTransitionName extends string>(
@@ -415,7 +459,14 @@ export class SnowState<
     leaveFunc?: LeaveEnterMethod,
     enterFunc?: LeaveEnterMethod
   ): SnowStateWithTypes<StateNames, CustomEvents, TransitionNames | NewTransitionName> {
-    return this.addTransition(transitionName, sourceState, SNOWSTATE_REFLEXIVE_TRANSITION_NAME, condition, leaveFunc, enterFunc);
+    return this.addTransition(
+      transitionName,
+      sourceState,
+      SNOWSTATE_REFLEXIVE_TRANSITION_NAME,
+      condition,
+      leaveFunc,
+      enterFunc
+    );
   }
 
   public transitionExists(transitionName: TransitionNames, sourceState: StateNames): SNOWSTATE_DEFINEDNESS {
@@ -433,6 +484,46 @@ export class SnowState<
     // No transitions found
     return SNOWSTATE_DEFINEDNESS.NOT_DEFINED;
   }
+
+  // Protected method to emit events
+  protected emit<K extends keyof SnowStateEvents>(event: K, ...args: Parameters<SnowStateEvents[K]>): void {
+    const callbacks = this.eventCallbacks[event];
+    if (callbacks) {
+      for (const callback of callbacks) {
+        callback(...args);
+      }
+    }
+  }
+
+  // Public method to register an event callback
+  public on<K extends keyof SnowStateEvents>(event: K, callback: SnowStateEvents[K]): this {
+    if (!this.eventCallbacks[event]) {
+      this.eventCallbacks[event] = new Set();
+    }
+    this.eventCallbacks[event].add(callback);
+    return this;
+  }
+
+  // Public method to remove an event callback
+  public off<K extends keyof SnowStateEvents>(event: K, callback?: SnowStateEvents[K]): this {
+    if (!this.eventCallbacks[event]) {
+      return this;
+    }
+
+    if (callback) {
+      this.eventCallbacks[event].delete(callback);
+    } else {
+      // If no specific callback is provided, remove all callbacks for the event
+      this.eventCallbacks[event].clear();
+    }
+
+    // Clean up empty sets
+    if (this.eventCallbacks[event].size === 0) {
+      delete this.eventCallbacks[event];
+    }
+
+    return this;
+  }
 }
 
 // Update factory function type
@@ -441,7 +532,7 @@ export type SnowStateWithTypes<
   CustomEvents extends Record<string, StateMethod> = {},
   TransitionNames extends string = never
 > = SnowState<StateNames, CustomEvents, TransitionNames> & {
-  [K in keyof CustomEvents]: () => void;
+  [K in keyof CustomEvents]: (...args: any) => void;
 };
 
 export function createSnowState<StateNames extends string = never, TransitionNames extends string = never>(
