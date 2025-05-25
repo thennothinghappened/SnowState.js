@@ -538,6 +538,6 @@ player.update(); // OK
 player.draw(); // OK
 player.step(); // Error! "step" wasn't previously aded as an event
 
-pl/ayer.trigger("t_walk"); // OK
+player.trigger("t_walk"); // OK
 player.trigger("t_run"); // Error! "t_run" wasn't previously added as a transition name
 ```
